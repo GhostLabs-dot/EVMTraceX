@@ -1,19 +1,73 @@
 use crate::model::{CallKind, TraceNode};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde_json::Value;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path, time::Duration};
 
 pub fn load_trace(path: &Path) -> Result<TraceNode> {
     let raw = fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     parse_trace(&raw)
 }
 
+pub fn load_trace_rpc(rpc_url: &str, tx_hash: &str) -> Result<TraceNode> {
+    let tx_hash = tx_hash.trim();
+
+    let Some(raw_hash) = tx_hash.strip_prefix("0x") else {
+        bail!("transaction hash must start with 0x");
+    };
+
+    if raw_hash.len() != 64 || !raw_hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        bail!("transaction hash must be a 32-byte hex value");
+    }
+
+    let payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "debug_traceTransaction",
+        "params": [
+            tx_hash,
+            {
+                "tracer": "callTracer"
+            }
+        ]
+    });
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .context("failed to create HTTP client")?;
+
+    let response = client
+        .post(rpc_url)
+        .json(&payload)
+        .send()
+        .with_context(|| format!("failed to query RPC endpoint {}", rpc_url))?;
+
+    let status = response.status();
+    let body = response.text().context("failed to read RPC response body")?;
+
+    if !status.is_success() {
+        bail!("RPC request failed with HTTP {}: {}", status, body);
+    }
+
+    let value: Value = serde_json::from_str(&body).context("RPC returned invalid JSON")?;
+
+    if let Some(error) = value.get("error") {
+        bail!("RPC error: {}", error);
+    }
+
+    parse_trace(&body)
+}
+
 pub fn parse_trace(raw: &str) -> Result<TraceNode> {
     let value: Value = serde_json::from_str(raw).context("invalid JSON trace")?;
-    let root = if let Some(result) = value.get("result") { result } else { &value };
+    let root = value.get("result").unwrap_or(&value);
+    if !root.is_object() {
+        bail!("trace root must be a JSON object");
+    }
+
     let mut next_id = 0usize;
     let mut node = parse_node(root, 0, &mut next_id)?;
-    attach_storage_extensions(&value, &mut node);
+    attach_storage_extensions(root, &mut node);
     Ok(node)
 }
 
@@ -28,8 +82,22 @@ fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceN
         depth,
         kind,
         from: str_field(value, "from"),
-        to: str_field(value, "to").or_else(|| str_field(value, "address")),
-        input: str_field(value, "input").or_else(|| str_field(value, "data")),
+        to: {
+            let to = str_field(value, "to");
+            if to.is_empty() {
+                str_field(value, "address")
+            } else {
+                to
+            }
+        },
+        input: {
+            let input = str_field(value, "input");
+            if input.is_empty() {
+                str_field(value, "data")
+            } else {
+                input
+            }
+        },
         output: str_field(value, "output"),
         value: str_field(value, "value"),
         gas,
@@ -80,18 +148,32 @@ fn parse_kind(raw: &str) -> CallKind {
 }
 
 fn parse_storage_diff(value: Option<&Value>) -> Vec<crate::model::StorageChange> {
-    let Some(value) = value else { return Vec::new(); };
-    let Some(obj) = value.as_object() else { return Vec::new(); };
-    obj.iter().filter_map(|(slot, entry)| {
-        if let Some(pair) = entry.as_array() {
-            let before = pair.get(0)?.as_str()?.to_string();
-            let after = pair.get(1)?.as_str()?.to_string();
-            return Some(crate::model::StorageChange { slot: slot.clone(), before, after });
-        }
-        let before = entry.get("before")?.as_str()?.to_string();
-        let after = entry.get("after")?.as_str()?.to_string();
-        Some(crate::model::StorageChange { slot: slot.clone(), before, after })
-    }).collect()
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let Some(obj) = value.as_object() else {
+        return Vec::new();
+    };
+    obj.iter()
+        .filter_map(|(slot, entry)| {
+            if let Some(pair) = entry.as_array() {
+                let before = pair.first()?.as_str()?.to_string();
+                let after = pair.get(1)?.as_str()?.to_string();
+                return Some(crate::model::StorageChange {
+                    slot: slot.clone(),
+                    before,
+                    after,
+                });
+            }
+            let before = entry.get("before")?.as_str()?.to_string();
+            let after = entry.get("after")?.as_str()?.to_string();
+            Some(crate::model::StorageChange {
+                slot: slot.clone(),
+                before,
+                after,
+            })
+        })
+        .collect()
 }
 
 fn parse_u64(value: Option<&Value>) -> u64 {
@@ -119,17 +201,34 @@ fn optional_string(value: &Value, key: &str) -> Option<String> {
 }
 
 pub fn load_selectors(path: Option<&Path>) -> Result<BTreeMap<String, String>> {
-    let Some(path) = path else { return Ok(BTreeMap::new()); };
+    let Some(path) = path else {
+        return Ok(BTreeMap::new());
+    };
     let raw = fs::read_to_string(path).with_context(|| format!("failed to read ABI {}", path.display()))?;
     let value: Value = serde_json::from_str(&raw).context("invalid ABI JSON")?;
-    let items = value.as_array().context("ABI must be a JSON array")?;
+    let items = if let Some(items) = value.as_array() {
+        items
+    } else {
+        value
+            .get("abi")
+            .and_then(Value::as_array)
+            .context("ABI must be a JSON array or an object containing an 'abi' array")?
+    };
     let mut out = BTreeMap::new();
     for item in items {
-        if item.get("type").and_then(Value::as_str) != Some("function") { continue; }
-        let Some(name) = item.get("name").and_then(Value::as_str) else { continue; };
-        let Some(inputs) = item.get("inputs").and_then(Value::as_array) else { continue; };
+        if item.get("type").and_then(Value::as_str) != Some("function") {
+            continue;
+        }
+        let Some(name) = item.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(inputs) = item.get("inputs").and_then(Value::as_array) else {
+            continue;
+        };
         let types = inputs.iter().filter_map(canonical_abi_type).collect::<Vec<_>>();
-        if types.len() != inputs.len() { continue; }
+        if types.len() != inputs.len() {
+            continue;
+        }
         let signature = format!("{}({})", name, types.join(","));
         let selector = crate::selector::selector4(&signature);
         out.insert(selector, signature);
@@ -139,10 +238,9 @@ pub fn load_selectors(path: Option<&Path>) -> Result<BTreeMap<String, String>> {
 
 fn canonical_abi_type(input: &Value) -> Option<String> {
     let ty = input.get("type")?.as_str()?;
-    if ty.starts_with("tuple") {
+    if let Some(suffix) = ty.strip_prefix("tuple") {
         let components = input.get("components")?.as_array()?;
         let inner = components.iter().map(canonical_abi_type).collect::<Option<Vec<_>>>()?;
-        let suffix = &ty["tuple".len()..];
         Some(format!("({}){}", inner.join(","), suffix))
     } else {
         Some(ty.to_string())

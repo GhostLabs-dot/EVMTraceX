@@ -86,11 +86,19 @@ impl TraceNode {
 
     pub fn input_bytes_len(&self) -> usize {
         let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
-        s.len().saturating_sub(8) / 2
+        s.len() / 2
     }
 
     pub fn flatten(&self, out: &mut Vec<TraceRow>) {
-        out.push(TraceRow { id: self.id, depth: self.depth, kind: self.kind.clone(), from: self.from.clone(), to: self.to.clone(), gas_used: self.gas_used, status: self.status() });
+        out.push(TraceRow {
+            id: self.id,
+            depth: self.depth,
+            kind: self.kind.clone(),
+            from: self.from.clone(),
+            to: self.to.clone(),
+            gas_used: self.gas_used,
+            status: self.status(),
+        });
         for child in &self.calls {
             child.flatten(out);
         }
@@ -98,6 +106,7 @@ impl TraceNode {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct TraceRow {
     pub id: usize,
     pub depth: usize,
@@ -124,9 +133,12 @@ impl Stats {
     pub fn from_root(root: &TraceNode) -> Self {
         let mut rows = Vec::new();
         root.flatten(&mut rows);
-        let mut s = Self { frames: rows.len(), ..Default::default() };
+        let mut s = Self {
+            frames: rows.len(),
+            gas_used: root.gas_used,
+            ..Default::default()
+        };
         for r in rows {
-            s.gas_used = s.gas_used.saturating_add(r.gas_used);
             match r.kind {
                 CallKind::Call => s.calls += 1,
                 CallKind::DelegateCall => s.delegatecalls += 1,
@@ -134,7 +146,9 @@ impl Stats {
                 CallKind::Create | CallKind::Create2 => s.creates += 1,
                 _ => {}
             }
-            if r.status == "REVERT" { s.reverts += 1; }
+            if r.status == "REVERT" {
+                s.reverts += 1;
+            }
         }
         s.storage_writes = count_storage_writes(root);
         s
@@ -146,6 +160,7 @@ fn count_storage_writes(node: &TraceNode) -> usize {
 }
 
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 pub struct SelectionDetails {
     pub trace_path: Vec<String>,
     pub storage: Vec<StorageChange>,
@@ -153,4 +168,5 @@ pub struct SelectionDetails {
     pub known_selector: Option<String>,
 }
 
+#[allow(dead_code)]
 pub type SelectorMap = BTreeMap<String, String>;
