@@ -9,7 +9,7 @@ Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 **Project:** [EVMTraceX](https://github.com/GhostLabs-dot/EVMTraceX)  
 **GitHub:** [GhostLabs-dot](https://github.com/GhostLabs-dot)  
 **LinkedIn:** [Genadi Avetisov](https://www.linkedin.com/in/genadi-avetisov/)  
-**Company:** [Ghost Labs]
+**Company:** Ghost Labs
 
 ---
 
@@ -953,7 +953,7 @@ The project is developed as part of Ghost Labs' broader work in EVM tooling, run
 - [Project repository](https://github.com/GhostLabs-dot/EVMTraceX)
 - [GitHub](https://github.com/GhostLabs-dot)
 - [LinkedIn](https://www.linkedin.com/in/genadi-avetisov/)
-- [Ghost Labs]
+- Ghost Labs
 
 ---
 

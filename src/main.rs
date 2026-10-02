@@ -506,7 +506,6 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
         assert!(parse_trace(raw).is_err());
     }
 
-
     #[test]
     fn keyboard_navigation_changes_selection_and_panels() {
         let root = parse_trace(include_str!("../examples/sample_trace.json")).unwrap();

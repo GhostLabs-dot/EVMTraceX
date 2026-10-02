@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve `evmtrace-tui`.
+Thanks for helping improve the EVM Execution Trace Explorer.
 
 ## Development
 

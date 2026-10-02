@@ -6,7 +6,6 @@ description = "EVM execution trace explorer for developers, auditors, and securi
 authors = ["Genadi Avetisov"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://ghostlabs.no"
 repository = "https://github.com/GhostLabs-dot/EVMTraceX"
 keywords = ["ethereum", "evm", "trace", "debugging", "tui"]
 categories = ["command-line-utilities", "development-tools::debugging"]
