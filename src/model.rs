@@ -90,7 +90,7 @@ impl TraceNode {
     pub fn selector(&self) -> Option<&str> {
         let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
 
-        if s.len() < 8 || !s.as_bytes()[..8].iter().all(|byte| byte.is_ascii_hexdigit()) {
+        if s.len() < 8 || !s.len().is_multiple_of(2) || !s.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return None;
         }
 
@@ -100,7 +100,7 @@ impl TraceNode {
     pub fn input_bytes_len(&self) -> usize {
         let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
 
-        if !s.len().is_multiple_of(2) {
+        if !s.len().is_multiple_of(2) || !s.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return 0;
         }
 

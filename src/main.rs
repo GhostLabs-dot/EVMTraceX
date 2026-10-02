@@ -452,6 +452,17 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
         let root = parse_trace(raw).unwrap();
 
         assert_eq!(root.selector(), None);
+
+        let raw = r#"{
+  "type": "CALL",
+  "from": "0x1111111111111111111111111111111111111111",
+  "to": "0x2222222222222222222222222222222222222222",
+  "input": "0xa9059cbbZZ"
+}"#;
+
+        let root = parse_trace(raw).unwrap();
+
+        assert_eq!(root.selector(), None);
     }
 
     #[test]
