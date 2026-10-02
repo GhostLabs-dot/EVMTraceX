@@ -4,7 +4,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap},
+    widgets::{
+        Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Tabs, Wrap,
+    },
     Frame,
 };
 use std::collections::HashSet;
@@ -133,14 +136,49 @@ fn draw_trace(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(panel_border(app.active_panel == Panel::Trace, Color::Cyan));
 
-    let list = List::new(items).block(block).highlight_symbol("▶ ").highlight_style(
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let list_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width.saturating_sub(1),
+        height: inner.height,
+    };
+
+    let scrollbar_area = Rect {
+        x: inner.x.saturating_add(inner.width.saturating_sub(1)),
+        y: inner.y,
+        width: inner.width.min(1),
+        height: inner.height,
+    };
+
+    let list = List::new(items).highlight_symbol("▶ ").highlight_style(
         Style::default()
             .fg(Color::White)
             .bg(Color::Blue)
             .add_modifier(Modifier::BOLD),
     );
 
-    f.render_stateful_widget(list, area, &mut app.list_state);
+    f.render_stateful_widget(list, list_area, &mut app.list_state);
+
+    let mut scrollbar_state = ScrollbarState::new(app.rows.len())
+        .viewport_content_length(list_area.height as usize)
+        .position(app.list_state.offset());
+
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("▲"))
+        .end_symbol(Some("▼"))
+        .track_symbol(Some("│"))
+        .thumb_symbol("█")
+        .thumb_style(Style::default().fg(Color::Cyan))
+        .track_style(Style::default().fg(Color::DarkGray));
+
+    f.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
 
 fn collect_trace_items(node: &TraceNode, visible_ids: &HashSet<usize>, out: &mut Vec<ListItem<'static>>) {
@@ -349,9 +387,14 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let title = if !node.storage_diff.is_empty() {
-        format!(" Details · {} storage changes ", node.storage_diff.len())
+        format!(
+            " Details · Frame {}/{} · {} storage changes ",
+            app.selected + 1,
+            app.rows.len(),
+            node.storage_diff.len()
+        )
     } else {
-        " Details ".into()
+        format!(" Details · Frame {}/{} ", app.selected + 1, app.rows.len())
     };
 
     f.render_widget(
@@ -581,6 +624,8 @@ fn kind_style(kind: &CallKind) -> Style {
         CallKind::Create => Style::default().fg(Color::Green),
         CallKind::Create2 => Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
         CallKind::SelfDestruct => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        CallKind::FoundryTest => Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+        CallKind::Cheatcode => Style::default().fg(Color::Gray),
         CallKind::Unknown => Style::default().fg(Color::Gray),
     }
 }

@@ -4,7 +4,6 @@ Thanks for helping improve `evmtrace-tui`.
 
 ## Development
 
-```markdown
 ```bash
 cargo fmt
 cargo check --all-targets --locked

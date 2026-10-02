@@ -17,6 +17,10 @@ pub enum CallKind {
     Create2,
     #[serde(rename = "SELFDESTRUCT", alias = "selfdestruct")]
     SelfDestruct,
+    #[serde(rename = "TEST", alias = "test")]
+    FoundryTest,
+    #[serde(rename = "CHEATCODE", alias = "cheatcode")]
+    Cheatcode,
     #[serde(other)]
     Unknown,
 }
@@ -31,6 +35,8 @@ impl CallKind {
             Self::Create => "CREATE",
             Self::Create2 => "CREATE2",
             Self::SelfDestruct => "SELFDESTRUCT",
+            Self::FoundryTest => "TEST",
+            Self::Cheatcode => "CHEATCODE",
             Self::Unknown => "UNKNOWN",
         }
     }

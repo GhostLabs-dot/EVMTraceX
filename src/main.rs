@@ -162,27 +162,27 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         }
         KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => {
             app.move_selection(1);
-            app.status_line = format!("Frame {}/{}", app.selected + 1, app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
             app.move_selection(-1);
-            app.status_line = format!("Frame {}/{}", app.selected + 1, app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::Home => {
             app.select_first();
-            app.status_line = format!("Frame 1/{}", app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::End => {
             app.select_last();
-            app.status_line = format!("Frame {}/{}", app.selected + 1, app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::PageDown => {
             app.move_selection(10);
-            app.status_line = format!("Frame {}/{}", app.selected + 1, app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::PageUp => {
             app.move_selection(-10);
-            app.status_line = format!("Frame {}/{}", app.selected + 1, app.rows.len());
+            app.status_line = selection_status(app);
         }
         KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::BackTab => {
             app.prev_panel();
@@ -232,6 +232,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     }
 
     Ok(false)
+}
+
+fn selection_status(app: &App) -> String {
+    if app.rows.is_empty() {
+        "No matching frames".into()
+    } else {
+        format!("Frame {}/{}", app.selected + 1, app.rows.len())
+    }
 }
 
 #[cfg(test)]
@@ -380,11 +388,12 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
         let inner = &outer.calls[0];
         let vm = &outer.calls[1];
 
+        assert_eq!(document.roots[0].kind, crate::model::CallKind::FoundryTest);
         assert_eq!(outer.to, "0x1111111111111111111111111111111111111111");
         assert_eq!(inner.to, "0x2222222222222222222222222222222222222222");
         assert_eq!(inner.from, "0x1111111111111111111111111111111111111111");
         assert_eq!(inner.kind, crate::model::CallKind::StaticCall);
-        assert_eq!(vm.kind, crate::model::CallKind::Unknown);
+        assert_eq!(vm.kind, crate::model::CallKind::Cheatcode);
         assert!(vm.to.is_empty());
         assert_eq!(document.outcome, Some(crate::model::TraceOutcome::Passed));
     }

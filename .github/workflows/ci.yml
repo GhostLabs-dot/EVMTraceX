@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: tools/evm-trace-tui
+
 jobs:
   check:
     strategy:

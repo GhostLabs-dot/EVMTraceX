@@ -45,6 +45,8 @@ Supported frame types include:
 * `CREATE`
 * `CREATE2`
 * `SELFDESTRUCT`
+* `TEST`
+* `CHEATCODE`
 * `UNKNOWN`
 
 For each frame, the interface can expose:
@@ -71,7 +73,6 @@ Nested calls remain attached to their parent frame, preserving execution structu
 
 ### Foundry `-vvvv` traces
 
-```markdown
 Foundry execution traces can be loaded directly from the text produced by:
 
 ```bash
@@ -81,6 +82,7 @@ For storage-change output, use:
 
 ```bash
 forge test -vvvvv > foundry-trace.txt
+```
 
 Then open the trace:
 
@@ -137,7 +139,7 @@ Return and revert markers are associated with the execution frame that produced 
 
 Foundry text traces are normalized conservatively rather than reconstructed into fields that are not explicitly present.
 
-Foundry `VM::...` cheatcodes remain `UNKNOWN` frames even when Foundry marks the underlying call as `[staticcall]`.
+Foundry `VM::...` cheatcodes are represented as `CHEATCODE` frames. The Foundry test invocation root is represented as `TEST`. These frames are kept separate from actual EVM call kinds.
 
 When a Foundry label contains an explicit 20-byte address before `::`, that address is preserved as the frame target, and a known parent target may be used as the child caller.
 
@@ -809,7 +811,6 @@ cargo build --release
 
 ### Full verification
 
-```text
 Before submitting changes, run:
 
 ```bash
@@ -828,14 +829,12 @@ cargo audit
 
 ## CI
 
-```text
 The project CI verifies:
 
-```text
+```bash
 cargo fmt --all -- --check
-git diff --check
 cargo check --all-targets --locked
-cargo clippy --all-targets --all-features -- -D warnings --locked
+cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo test --all-targets --locked
 cargo build --release --locked
 cargo package --locked

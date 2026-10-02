@@ -66,6 +66,13 @@ pub fn load_trace_rpc(rpc_url: &str, tx_hash: &str) -> Result<TraceDocument> {
 
 pub fn parse_trace(raw: &str) -> Result<TraceNode> {
     let value: Value = serde_json::from_str(raw).context("invalid JSON trace")?;
+
+    if value.get("jsonrpc").is_some() && value.get("result").is_none() {
+        if let Some(error) = value.get("error") {
+            bail!("JSON-RPC response contains an error: {}", error);
+        }
+    }
+
     let root = value.get("result").unwrap_or(&value);
     if !root.is_object() {
         bail!("trace root must be a JSON object");
@@ -229,10 +236,8 @@ fn parse_foundry_call(line: &str) -> Option<(usize, u64, String, CallKind)> {
         return None;
     }
 
-    let lower = payload.to_ascii_lowercase();
-
     if payload.starts_with("VM::") {
-        return Some((depth, gas_used, payload.to_string(), CallKind::Unknown));
+        return Some((depth, gas_used, payload.to_string(), CallKind::Cheatcode));
     }
 
     if let Some(label) = payload.strip_suffix("[staticcall]") {
@@ -248,11 +253,9 @@ fn parse_foundry_call(line: &str) -> Option<(usize, u64, String, CallKind)> {
     }
 
     let kind = if depth == 0 {
-        CallKind::Unknown
+        CallKind::FoundryTest
     } else if payload.starts_with("→ new ") {
         CallKind::Create
-    } else if lower.contains("selfdestruct") {
-        CallKind::SelfDestruct
     } else {
         CallKind::Call
     };
@@ -341,9 +344,13 @@ fn parse_foundry_storage_change(line: &str) -> Option<StorageChange> {
 fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceNode> {
     let id = *next_id;
     *next_id += 1;
-    let kind = parse_kind(value.get("type").and_then(Value::as_str).unwrap_or("CALL"));
-    let gas = parse_u64(value.get("gas").or_else(|| value.get("gasLimit")));
-    let gas_used = parse_u64(value.get("gasUsed").or_else(|| value.get("gas_used")));
+    let kind_raw = value
+        .get("type")
+        .and_then(Value::as_str)
+        .context("trace frame is missing string field 'type'")?;
+    let kind = parse_kind(kind_raw);
+    let gas = parse_u64(value.get("gas").or_else(|| value.get("gasLimit")))?;
+    let gas_used = parse_u64(value.get("gasUsed").or_else(|| value.get("gas_used")))?;
     let mut node = TraceNode {
         id,
         depth,
@@ -444,19 +451,20 @@ fn parse_storage_diff(value: Option<&Value>) -> Vec<crate::model::StorageChange>
         .collect()
 }
 
-fn parse_u64(value: Option<&Value>) -> u64 {
+fn parse_u64(value: Option<&Value>) -> Result<u64> {
     match value {
-        Some(Value::Number(n)) => n.as_u64().unwrap_or(0),
+        Some(Value::Number(n)) => n.as_u64().context("numeric value does not fit into u64"),
         Some(Value::String(s)) => parse_hex_or_dec(s),
-        _ => 0,
+        _ => Ok(0),
     }
 }
 
-fn parse_hex_or_dec(s: &str) -> u64 {
+fn parse_hex_or_dec(s: &str) -> Result<u64> {
     if let Some(v) = s.strip_prefix("0x") {
-        u64::from_str_radix(v, 16).unwrap_or(0)
+        u64::from_str_radix(v, 16).with_context(|| format!("invalid hexadecimal integer: {}", s))
     } else {
-        s.parse().unwrap_or(0)
+        s.parse::<u64>()
+            .with_context(|| format!("invalid decimal integer: {}", s))
     }
 }
 
@@ -499,6 +507,16 @@ pub fn load_selectors(path: Option<&Path>) -> Result<BTreeMap<String, String>> {
         }
         let signature = format!("{}({})", name, types.join(","));
         let selector = crate::selector::selector4(&signature);
+        if let Some(existing) = out.get(&selector) {
+            if existing != &signature {
+                bail!(
+                    "ABI selector collision for 0x{}: {} and {}",
+                    selector,
+                    existing,
+                    signature
+                );
+            }
+        }
         out.insert(selector, signature);
     }
     Ok(out)
@@ -511,6 +529,34 @@ fn canonical_abi_type(input: &Value) -> Option<String> {
         let inner = components.iter().map(canonical_abi_type).collect::<Option<Vec<_>>>()?;
         Some(format!("({}){}", inner.join(","), suffix))
     } else {
-        Some(ty.to_string())
+        let (base, suffix) = ty
+            .find('[')
+            .map(|index| (&ty[..index], &ty[index..]))
+            .unwrap_or((ty, ""));
+        let base = match base {
+            "uint" => "uint256",
+            "int" => "int256",
+            "fixed" => "fixed128x18",
+            "ufixed" => "ufixed128x18",
+            _ => base,
+        };
+        Some(format!("{}{}", base, suffix))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonicalizes_non_canonical_integer_types() {
+        assert_eq!(
+            canonical_abi_type(&serde_json::json!({"type": "uint"})),
+            Some("uint256".into())
+        );
+        assert_eq!(
+            canonical_abi_type(&serde_json::json!({"type": "int[]"})),
+            Some("int256[]".into())
+        );
     }
 }
