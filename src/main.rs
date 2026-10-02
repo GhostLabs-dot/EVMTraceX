@@ -494,6 +494,20 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
     }
 
     #[test]
+    fn invalid_numeric_trace_fields_are_rejected() {
+        let raw = r#"{
+  "type": "CALL",
+  "from": "0x1111111111111111111111111111111111111111",
+  "to": "0x2222222222222222222222222222222222222222",
+  "gas": true,
+  "gasUsed": "0x1"
+}"#;
+
+        assert!(parse_trace(raw).is_err());
+    }
+
+
+    #[test]
     fn keyboard_navigation_changes_selection_and_panels() {
         let root = parse_trace(include_str!("../examples/sample_trace.json")).unwrap();
         let mut app = App::new(
