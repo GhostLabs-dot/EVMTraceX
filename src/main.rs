@@ -12,7 +12,8 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use parser::{load_selectors, load_trace, load_trace_rpc};
+use model::TraceDocument;
+use parser::{load_foundry_trace, load_selectors, load_trace, load_trace_rpc};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{io, path::PathBuf, time::Duration};
 
@@ -20,11 +21,14 @@ use std::{io, path::PathBuf, time::Duration};
 #[command(
     name = "evmtrace-tui",
     version,
-    about = "Terminal-first EVM transaction trace explorer"
+    about = "EVM Trace TUI — terminal-first EVM transaction trace explorer"
 )]
 struct Args {
     /// Path to a Geth callTracer-style JSON trace.
     input: Option<PathBuf>,
+    /// Path to Foundry `forge test -vvvv` output.
+    #[arg(long, conflicts_with_all = ["input", "tx", "rpc"], value_name = "FILE")]
+    foundry: Option<PathBuf>,
     /// Transaction hash to trace through an RPC endpoint.
     #[arg(long, requires = "rpc", conflicts_with = "input", value_name = "TX_HASH")]
     tx: Option<String>,
@@ -39,26 +43,39 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let root = match (&args.input, &args.tx, &args.rpc) {
-        (Some(path), None, None) => load_trace(path)?,
-        (None, Some(tx_hash), Some(rpc_url)) => load_trace_rpc(rpc_url, tx_hash)?,
-        _ => bail!("provide either a trace file or both --tx and --rpc"),
+    let root = if let Some(path) = &args.foundry {
+        load_foundry_trace(path)?
+    } else {
+        match (&args.input, &args.tx, &args.rpc) {
+            (Some(path), None, None) => load_trace(path)?,
+            (None, Some(tx_hash), Some(rpc_url)) => load_trace_rpc(rpc_url, tx_hash)?,
+            _ => bail!("provide either a trace file, a Foundry trace, or both --tx and --rpc"),
+        }
     };
 
     let selectors = load_selectors(args.abi.as_deref())?;
     run(root, selectors)
 }
 
-fn run(root: model::TraceNode, selectors: std::collections::BTreeMap<String, String>) -> Result<()> {
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen);
+    }
+}
+
+fn run(document: TraceDocument, selectors: std::collections::BTreeMap<String, String>) -> Result<()> {
     enable_raw_mode()?;
+    let _terminal_guard = TerminalGuard;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut app = App::new(root, selectors);
+    let mut app = App::new(document, selectors);
     let result = event_loop(&mut terminal, &mut app);
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     result
 }
@@ -88,7 +105,7 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut A
 fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     if app.show_help {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('?') => {
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 app.show_help = false;
                 app.status_line = "Help closed".into();
             }
@@ -100,10 +117,15 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     if app.input_mode {
         match key.code {
             KeyCode::Esc => {
+                if let Some(previous) = app.filter_input_backup.take() {
+                    app.filter.text = previous;
+                    app.rebuild_rows();
+                }
                 app.input_mode = false;
-                app.status_line = "Filter canceled".into();
+                app.status_line = format!("Filter canceled · {} frames", app.rows.len());
             }
             KeyCode::Enter => {
+                app.filter_input_backup = None;
                 app.input_mode = false;
                 app.rebuild_rows();
                 app.status_line = format!("Filter applied · {} frames", app.rows.len());
@@ -115,6 +137,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.filter.text.clear();
+                app.filter_input_backup = None;
                 app.input_mode = false;
                 app.rebuild_rows();
                 app.status_line = "Filter cleared".into();
@@ -201,6 +224,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             app.status_line = format!("Filters cleared · {} frames", app.rows.len());
         }
         KeyCode::Char('/') => {
+            app.filter_input_backup = Some(app.filter.text.clone());
             app.input_mode = true;
             app.status_line = "Filter mode".into();
         }
@@ -214,7 +238,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
 mod tests {
     use crate::app::{App, Panel};
     use crate::handle_key;
-    use crate::parser::parse_trace;
+    use crate::parser::{parse_foundry_trace, parse_trace};
     use crate::selector::selector4;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -234,9 +258,200 @@ mod tests {
     }
 
     #[test]
+    fn parses_foundry_vvvvv_trace() {
+        let raw = r#"
+Ran 1 tests for test/Counter.t.sol:CounterTest
+Traces:
+  [28783] CounterTest::test_Increment()
+    ├─ [22418] Counter::increment()
+    │   └─ ← [Stop]
+    ├─ [424] Counter::number() [staticcall]
+    │   └─ ← [Return] 1
+    └─ ← [Stop]
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+
+        assert_eq!(document.roots.len(), 1);
+        assert_eq!(
+            document.roots[0].label.as_deref(),
+            Some("CounterTest::test_Increment()")
+        );
+        assert_eq!(document.roots[0].calls.len(), 2);
+        assert_eq!(document.roots[0].calls[1].kind, crate::model::CallKind::StaticCall);
+        assert_eq!(document.roots[0].calls[1].gas_used, 424);
+        assert_eq!(document.roots[0].calls[1].output, "1");
+    }
+
+    #[test]
+    fn attributes_foundry_results_to_the_immediately_previous_frame() {
+        let raw = r#"
+Traces:
+  [3000] Test::run()
+    ├─ [1000] Contract::first()
+    │   └─ ← [Return] 123
+    ├─ [1200] Contract::second()
+    │   └─ ← [Revert] oracle failed
+    └─ ← [Stop]
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+
+        assert_eq!(document.roots.len(), 1);
+        assert_eq!(document.roots[0].calls.len(), 2);
+        assert_eq!(document.roots[0].calls[0].output, "123");
+        assert_eq!(
+            document.roots[0].calls[1].revert_reason.as_deref(),
+            Some("oracle failed")
+        );
+        assert_eq!(document.roots[0].calls[1].status(), "REVERT");
+        assert_eq!(document.roots[0].status(), "SUCCESS");
+    }
+
+    #[test]
+    fn attributes_foundry_parent_result_to_the_parent_frame() {
+        let raw = r#"
+Traces:
+  [3000] Test::run()
+    ├─ [1000] Contract::first()
+    │   └─ ← [Stop]
+    └─ ← [Revert] root failed
+
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+
+        assert_eq!(document.roots.len(), 1);
+        assert_eq!(document.roots[0].status(), "REVERT");
+        assert_eq!(document.roots[0].revert_reason.as_deref(), Some("root failed"));
+        assert_eq!(document.roots[0].calls[0].status(), "SUCCESS");
+        assert_eq!(document.outcome, Some(crate::model::TraceOutcome::Failed));
+    }
+
+    #[test]
+    fn parses_multiple_foundry_trace_roots_without_merging_gas() {
+        let raw = r#"
+Traces:
+  [1000] CounterTest::test_First()
+    └─ [700] Counter::increment()
+    │   └─ ← [Stop]
+    └─ ← [Stop]
+
+Traces:
+  [2000] CounterTest::test_Second()
+    └─ [1500] Counter::number() [staticcall]
+    │   └─ ← [Return] 42
+    └─ ← [Stop]
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+
+        assert_eq!(document.roots.len(), 2);
+        assert_eq!(document.roots[0].label.as_deref(), Some("CounterTest::test_First()"));
+        assert_eq!(document.roots[1].label.as_deref(), Some("CounterTest::test_Second()"));
+        assert_eq!(document.roots[0].gas_used, 1000);
+        assert_eq!(document.roots[1].gas_used, 2000);
+        assert_eq!(document.roots[1].calls[0].output, "42");
+    }
+
+    #[test]
+    fn foundry_cheatcodes_are_not_classified_as_staticcalls() {
+        let raw = r#"
+Traces:
+  [3000] Test::run()
+    ├─ [1000] 0x1111111111111111111111111111111111111111::outer()
+    │   ├─ [500] 0x2222222222222222222222222222222222222222::inner() [staticcall]
+    │   │   └─ ← [Return] 1
+    │   └─ [200] VM::load(0x01) [staticcall]
+    └─ ← [Stop]
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+        let outer = &document.roots[0].calls[0];
+        let inner = &outer.calls[0];
+        let vm = &outer.calls[1];
+
+        assert_eq!(outer.to, "0x1111111111111111111111111111111111111111");
+        assert_eq!(inner.to, "0x2222222222222222222222222222222222222222");
+        assert_eq!(inner.from, "0x1111111111111111111111111111111111111111");
+        assert_eq!(inner.kind, crate::model::CallKind::StaticCall);
+        assert_eq!(vm.kind, crate::model::CallKind::Unknown);
+        assert!(vm.to.is_empty());
+        assert_eq!(document.outcome, Some(crate::model::TraceOutcome::Passed));
+    }
+
+    #[test]
+    fn foundry_failed_suite_result_is_preserved() {
+        let raw = r#"
+Traces:
+  [3000] Test::run()
+    └─ [200] VM::assertEq(0, 1)
+
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+
+        assert_eq!(document.roots.len(), 1);
+        assert_eq!(document.outcome, Some(crate::model::TraceOutcome::Failed));
+    }
+
+    #[test]
+    fn foundry_storage_changes_are_parsed() {
+        let raw = r#"
+Traces:
+  [3000] 0x1111111111111111111111111111111111111111::run()
+    └─ [1000] 0x2222222222222222222222222222222222222222::set()
+       - state diff:
+         @ 0x01 (counter, uint256): 0 → 1
+         @ 0x02: 2 -> 3
+       └─ ← [Stop]
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
+"#;
+
+        let document = parse_foundry_trace(raw).unwrap();
+        let node = &document.roots[0].calls[0];
+
+        assert_eq!(node.storage_diff.len(), 2);
+        assert_eq!(node.storage_diff[0].slot, "0x01");
+        assert_eq!(node.storage_diff[0].before, "0");
+        assert_eq!(node.storage_diff[0].after, "1");
+        assert_eq!(node.storage_diff[1].slot, "0x02");
+        assert_eq!(node.storage_diff[1].before, "2");
+        assert_eq!(node.storage_diff[1].after, "3");
+    }
+
+    #[test]
+    fn malformed_selector_input_is_not_exposed() {
+        let raw = r#"{
+  "type": "CALL",
+  "from": "0x1111111111111111111111111111111111111111",
+  "to": "0x2222222222222222222222222222222222222222",
+  "input": "éééééééé"
+}"#;
+
+        let root = parse_trace(raw).unwrap();
+
+        assert_eq!(root.selector(), None);
+    }
+
+    #[test]
     fn keyboard_navigation_changes_selection_and_panels() {
         let root = parse_trace(include_str!("../examples/sample_trace.json")).unwrap();
-        let mut app = App::new(root, std::collections::BTreeMap::new());
+        let mut app = App::new(
+            crate::model::TraceDocument::single(root),
+            std::collections::BTreeMap::new(),
+        );
 
         assert_eq!(app.active_panel, Panel::Trace);
         assert_eq!(app.selected, 0);

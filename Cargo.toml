@@ -5,15 +5,16 @@ edition = "2021"
 description = "Terminal-first EVM transaction trace explorer for calls, reverts, gas and storage diffs."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/ghost-labs/evmtrace-tui"
+repository = "https://github.com/GhostLabs-dot/fuzzer-engine"
 keywords = ["ethereum", "evm", "trace", "debugging", "tui"]
 categories = ["command-line-utilities", "development-tools::debugging"]
+exclude = ["incident*-foundry.txt", "foundry-trace.txt"]
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29"
-ratatui = "0.29"
+ratatui = "0.30.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha3 = "0.10"

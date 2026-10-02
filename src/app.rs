@@ -1,5 +1,5 @@
 use crate::{
-    model::{CallKind, Stats, TraceNode},
+    model::{CallKind, Stats, TraceDocument, TraceNode},
     selector,
 };
 use ratatui::widgets::ListState;
@@ -13,7 +13,7 @@ pub enum Panel {
 }
 
 pub struct App {
-    pub root: TraceNode,
+    pub document: TraceDocument,
     pub rows: Vec<usize>,
     pub selected: usize,
     pub list_state: ListState,
@@ -23,6 +23,7 @@ pub struct App {
     pub selectors: std::collections::BTreeMap<String, String>,
     pub status_line: String,
     pub input_mode: bool,
+    pub filter_input_backup: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -34,9 +35,9 @@ pub struct Filter {
 }
 
 impl App {
-    pub fn new(root: TraceNode, selectors: std::collections::BTreeMap<String, String>) -> Self {
+    pub fn new(document: TraceDocument, selectors: std::collections::BTreeMap<String, String>) -> Self {
         let mut app = Self {
-            root,
+            document,
             rows: Vec::new(),
             selected: 0,
             list_state: ListState::default(),
@@ -46,6 +47,7 @@ impl App {
             selectors,
             status_line: "Ready".into(),
             input_mode: false,
+            filter_input_backup: None,
         };
         app.rebuild_rows();
         app
@@ -54,7 +56,11 @@ impl App {
     pub fn rebuild_rows(&mut self) {
         self.rows.clear();
         let filter = self.filter.clone();
-        collect_ids(&self.root, &filter, &mut self.rows);
+
+        for root in &self.document.roots {
+            collect_ids(root, &filter, &mut self.rows);
+        }
+
         if self.rows.is_empty() {
             self.selected = 0;
             self.list_state.select(None);
@@ -107,13 +113,27 @@ impl App {
 
     pub fn selected_node(&self) -> Option<&TraceNode> {
         let id = *self.rows.get(self.selected)?;
-        find_node(&self.root, id)
+
+        for root in &self.document.roots {
+            if let Some(node) = find_node(root, id) {
+                return Some(node);
+            }
+        }
+
+        None
     }
 
     #[allow(dead_code)]
     pub fn selected_node_mut(&mut self) -> Option<&mut TraceNode> {
         let id = *self.rows.get(self.selected)?;
-        find_node_mut(&mut self.root, id)
+
+        for root in &mut self.document.roots {
+            if let Some(node) = find_node_mut(root, id) {
+                return Some(node);
+            }
+        }
+
+        None
     }
 
     pub fn selector_name(&self, node: &TraceNode) -> Option<String> {
@@ -125,7 +145,7 @@ impl App {
     }
 
     pub fn stats(&self) -> Stats {
-        Stats::from_root(&self.root)
+        Stats::from_document(&self.document)
     }
 }
 
@@ -144,7 +164,8 @@ fn collect_ids(node: &TraceNode, filter: &Filter, out: &mut Vec<usize>) {
     }
     if !filter.text.is_empty() {
         let q = filter.text.to_ascii_lowercase();
-        include &= node.to.to_ascii_lowercase().contains(&q)
+        include &= node.display_name().to_ascii_lowercase().contains(&q)
+            || node.to.to_ascii_lowercase().contains(&q)
             || node.from.to_ascii_lowercase().contains(&q)
             || node.selector().unwrap_or("").to_ascii_lowercase().contains(&q);
     }

@@ -48,6 +48,8 @@ pub struct TraceNode {
     pub id: usize,
     pub depth: usize,
     pub kind: CallKind,
+    #[serde(default)]
+    pub label: Option<String>,
     pub from: String,
     pub to: String,
     #[serde(default)]
@@ -81,40 +83,57 @@ impl TraceNode {
 
     pub fn selector(&self) -> Option<&str> {
         let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
-        (s.len() >= 8).then(|| &s[..8])
+
+        if s.len() < 8 || !s.as_bytes()[..8].iter().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+
+        Some(&s[..8])
     }
 
     pub fn input_bytes_len(&self) -> usize {
         let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
+
+        if !s.len().is_multiple_of(2) {
+            return 0;
+        }
+
         s.len() / 2
     }
 
-    pub fn flatten(&self, out: &mut Vec<TraceRow>) {
-        out.push(TraceRow {
-            id: self.id,
-            depth: self.depth,
-            kind: self.kind.clone(),
-            from: self.from.clone(),
-            to: self.to.clone(),
-            gas_used: self.gas_used,
-            status: self.status(),
-        });
-        for child in &self.calls {
-            child.flatten(out);
+    pub fn display_name(&self) -> &str {
+        self.label.as_deref().filter(|s| !s.is_empty()).unwrap_or(&self.to)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TraceOutcome {
+    Passed,
+    Failed,
+}
+
+impl TraceOutcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Passed => "PASS",
+            Self::Failed => "FAILED",
         }
     }
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub struct TraceRow {
-    pub id: usize,
-    pub depth: usize,
-    pub kind: CallKind,
-    pub from: String,
-    pub to: String,
-    pub gas_used: u64,
-    pub status: &'static str,
+pub struct TraceDocument {
+    pub roots: Vec<TraceNode>,
+    pub outcome: Option<TraceOutcome>,
+}
+
+impl TraceDocument {
+    pub fn single(root: TraceNode) -> Self {
+        Self {
+            roots: vec![root],
+            outcome: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -131,32 +150,53 @@ pub struct Stats {
 
 impl Stats {
     pub fn from_root(root: &TraceNode) -> Self {
-        let mut rows = Vec::new();
-        root.flatten(&mut rows);
-        let mut s = Self {
-            frames: rows.len(),
+        let mut stats = Self {
             gas_used: root.gas_used,
             ..Default::default()
         };
-        for r in rows {
-            match r.kind {
-                CallKind::Call => s.calls += 1,
-                CallKind::DelegateCall => s.delegatecalls += 1,
-                CallKind::StaticCall => s.staticcalls += 1,
-                CallKind::Create | CallKind::Create2 => s.creates += 1,
-                _ => {}
-            }
-            if r.status == "REVERT" {
-                s.reverts += 1;
-            }
+        accumulate_stats(root, &mut stats);
+        stats
+    }
+
+    pub fn from_document(document: &TraceDocument) -> Self {
+        let mut stats = Self::default();
+
+        for root in &document.roots {
+            let root_stats = Self::from_root(root);
+            stats.frames += root_stats.frames;
+            stats.calls += root_stats.calls;
+            stats.delegatecalls += root_stats.delegatecalls;
+            stats.staticcalls += root_stats.staticcalls;
+            stats.creates += root_stats.creates;
+            stats.reverts += root_stats.reverts;
+            stats.storage_writes += root_stats.storage_writes;
+            stats.gas_used += root_stats.gas_used;
         }
-        s.storage_writes = count_storage_writes(root);
-        s
+
+        stats
     }
 }
 
-fn count_storage_writes(node: &TraceNode) -> usize {
-    node.storage_diff.len() + node.calls.iter().map(count_storage_writes).sum::<usize>()
+fn accumulate_stats(node: &TraceNode, stats: &mut Stats) {
+    stats.frames += 1;
+
+    match node.kind {
+        CallKind::Call => stats.calls += 1,
+        CallKind::DelegateCall => stats.delegatecalls += 1,
+        CallKind::StaticCall => stats.staticcalls += 1,
+        CallKind::Create | CallKind::Create2 => stats.creates += 1,
+        _ => {}
+    }
+
+    if node.status() == "REVERT" {
+        stats.reverts += 1;
+    }
+
+    stats.storage_writes += node.storage_diff.len();
+
+    for child in &node.calls {
+        accumulate_stats(child, stats);
+    }
 }
 
 #[derive(Clone, Debug, Default)]

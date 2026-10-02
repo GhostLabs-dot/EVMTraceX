@@ -7,6 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap},
     Frame,
 };
+use std::collections::HashSet;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let root = f.area();
@@ -68,13 +69,20 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let s = app.stats();
+    let outcome = app
+        .document
+        .outcome
+        .map(|value| format!(" │  result {} ", value.as_str()))
+        .unwrap_or_default();
 
     let title = format!(
-        " evmtrace-tui  │  {} frames  │  {} reverts  │  {} storage writes  │  tx gas {} ",
+        " EVM Trace TUI  │  {} frames  │  {} reverts  │  {} storage writes  │  {} roots  │  gas {}{}",
         s.frames,
         s.reverts,
         s.storage_writes,
-        fmt_num(s.gas_used)
+        app.document.roots.len(),
+        fmt_num(s.gas_used),
+        outcome
     );
 
     let tabs = Tabs::new([
@@ -106,27 +114,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_trace(f: &mut Frame, app: &mut App, area: Rect) {
     let mut items = Vec::new();
+    let visible_ids = app.rows.iter().copied().collect::<HashSet<_>>();
 
-    for id in &app.rows {
-        if let Some(node) = find_node(&app.root, *id) {
-            let indent = "  ".repeat(node.depth);
-            let branch = if node.depth == 0 { "" } else { "└─ " };
-            let status = node.status();
-            let selector = node.selector().map(|s| format!("0x{}", s)).unwrap_or_default();
-            let target = short_addr(&node.to);
-
-            items.push(ListItem::new(Line::from(vec![
-                Span::styled(format!("{}{}", indent, branch), Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{:11}", node.kind.as_str()), kind_style(&node.kind)),
-                Span::styled(format!(" {:18}", target), Style::default().fg(Color::White)),
-                Span::styled(format!(" {:10}", selector), Style::default().fg(Color::Cyan)),
-                Span::styled(format!(" {:>10}", status), status_style(status)),
-                Span::styled(
-                    format!(" gas {}", fmt_num(node.gas_used)),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ])));
-        }
+    for root in &app.document.roots {
+        collect_trace_items(root, &visible_ids, &mut items);
     }
 
     let filter_label = if app.input_mode {
@@ -152,10 +143,39 @@ fn draw_trace(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
+fn collect_trace_items(node: &TraceNode, visible_ids: &HashSet<usize>, out: &mut Vec<ListItem<'static>>) {
+    if visible_ids.contains(&node.id) {
+        let indent = "  ".repeat(node.depth);
+        let branch = if node.depth == 0 { "" } else { "└─ " };
+        let status = node.status();
+        let selector = node.selector().map(|s| format!("0x{}", s)).unwrap_or_default();
+        let label = compact_frame_label(node.display_name());
+
+        out.push(ListItem::new(Line::from(vec![
+            Span::styled(format!("{}{}", indent, branch), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{:11}", node.kind.as_str()), kind_style(&node.kind)),
+            Span::styled(format!(" {:28}", label), Style::default().fg(Color::White)),
+            Span::styled(format!(" {:10}", selector), Style::default().fg(Color::Cyan)),
+            Span::styled(format!(" {:>10}", status), status_style(status)),
+            Span::styled(
+                format!(" used {}", fmt_num(node.gas_used)),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])));
+    }
+
+    for child in &node.calls {
+        collect_trace_items(child, visible_ids, out);
+    }
+}
+
 fn draw_storage(f: &mut Frame, app: &mut App, area: Rect) {
     let mut items = Vec::new();
     let mut frame_ids = Vec::new();
-    collect_storage_rows(&app.root, &mut items, &mut frame_ids);
+
+    for root in &app.document.roots {
+        collect_storage_rows(root, &mut items, &mut frame_ids);
+    }
 
     if items.is_empty() {
         f.render_widget(
@@ -239,7 +259,13 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
         .map(|s| format!("0x{}", s))
         .unwrap_or_else(|| "—".into());
 
-    let decoded = app.selector_name(node).unwrap_or_else(|| "unknown selector".into());
+    let decoded = if node.selector().is_some() {
+        app.selector_name(node).unwrap_or_else(|| "unknown selector".into())
+    } else if node.label.as_deref().is_some_and(|label| !label.is_empty()) {
+        "not available from trace".into()
+    } else {
+        "—".into()
+    };
 
     let mut lines = vec![
         Line::from(vec![
@@ -273,14 +299,22 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("gas         ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("{} / {}", fmt_num(node.gas_used), fmt_num(node.gas)),
+                if node.gas == 0 {
+                    format!("{} used · limit unavailable", fmt_num(node.gas_used))
+                } else {
+                    format!("{} used / {} limit", fmt_num(node.gas_used), fmt_num(node.gas))
+                },
                 Style::default().fg(Color::Magenta),
             ),
         ]),
         Line::from(vec![
             Span::styled("input       ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("{} bytes", node.input_bytes_len()),
+                if node.input.is_empty() {
+                    "unavailable".into()
+                } else {
+                    format!("{} bytes", node.input_bytes_len())
+                },
                 Style::default().fg(Color::White),
             ),
         ]),
@@ -289,6 +323,16 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(node.calls.len().to_string(), Style::default().fg(Color::White)),
         ]),
     ];
+
+    if let Some(label) = &node.label {
+        lines.insert(
+            2,
+            Line::from(vec![
+                Span::styled("name        ", Style::default().fg(Color::DarkGray)),
+                Span::styled(label, Style::default().fg(Color::White)),
+            ]),
+        );
+    }
 
     if let Some(e) = &node.error {
         lines.push(Line::from(vec![
@@ -329,16 +373,10 @@ fn draw_gas(f: &mut Frame, app: &App, area: Rect) {
             Block::default()
                 .title(" Gas / Storage ")
                 .borders(Borders::ALL)
-                .border_style(panel_border(app.active_panel == Panel::Storage, Color::Magenta)),
+                .border_style(panel_border(app.active_panel == Panel::Details, Color::Yellow)),
             area,
         );
         return;
-    };
-
-    let ratio = if node.gas == 0 {
-        0.0
-    } else {
-        (node.gas_used as f64 / node.gas as f64).min(1.0)
     };
 
     let chunks = Layout::default()
@@ -346,20 +384,33 @@ fn draw_gas(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Length(3), Constraint::Min(4)])
         .split(area);
 
-    let gas_percent = format!("{:.1}%", ratio * 100.0);
+    if node.gas == 0 {
+        f.render_widget(
+            Paragraph::new(format!("Gas used: {} · limit unavailable", fmt_num(node.gas_used))).block(
+                Block::default()
+                    .title(" Frame Gas ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            ),
+            chunks[0],
+        );
+    } else {
+        let ratio = (node.gas_used as f64 / node.gas as f64).min(1.0);
+        let gas_percent = format!("{:.1}%", ratio * 100.0);
 
-    let gauge = Gauge::default()
-        .block(
-            Block::default()
-                .title(" Frame Gas ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow)),
-        )
-        .gauge_style(Style::default().fg(Color::Cyan))
-        .label(gas_percent)
-        .ratio(ratio);
+        let gauge = Gauge::default()
+            .block(
+                Block::default()
+                    .title(" Frame Gas ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .gauge_style(Style::default().fg(Color::Cyan))
+            .label(gas_percent)
+            .ratio(ratio);
 
-    f.render_widget(gauge, chunks[0]);
+        f.render_widget(gauge, chunks[0]);
+    }
 
     let mut lines = vec![Line::from(Span::styled(
         "Storage changes",
@@ -417,10 +468,11 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         format!("No matching frames · {} · {}", panel, app.status_line)
     } else {
         format!(
-            "Frame {}/{} · {} · {}",
+            "Frame {}/{} · {} · {} roots · {}",
             app.selected + 1,
             app.rows.len(),
             panel,
+            app.document.roots.len(),
             app.status_line
         )
     };
@@ -494,7 +546,7 @@ fn draw_help(f: &mut Frame, root: Rect) {
         Line::from("  ?           this help"),
         Line::from("  q / Esc     quit / close help"),
         Line::from(""),
-        Line::from("Input: Geth-style callTracer JSON, or the normalized trace schema shipped in examples/."),
+        Line::from("Input: Geth callTracer JSON, Foundry `forge test -vvvv` / `-vvvvv` output, or the normalized trace schema shipped in examples/."),
     ];
 
     f.render_widget(Clear, area);
@@ -510,20 +562,6 @@ fn draw_help(f: &mut Frame, root: Rect) {
             .wrap(Wrap { trim: false }),
         area,
     );
-}
-
-fn find_node(node: &TraceNode, id: usize) -> Option<&TraceNode> {
-    if node.id == id {
-        return Some(node);
-    }
-
-    for child in &node.calls {
-        if let Some(found) = find_node(child, id) {
-            return Some(found);
-        }
-    }
-
-    None
 }
 
 fn panel_border(active: bool, accent: Color) -> Style {
@@ -556,11 +594,39 @@ fn status_style(status: &str) -> Style {
 }
 
 fn short_addr(s: &str) -> String {
-    if s.len() <= 14 {
+    let chars = s.chars().collect::<Vec<_>>();
+
+    if chars.len() <= 14 {
         return s.to_string();
     }
 
-    format!("{}…{}", &s[..8], &s[s.len() - 6..])
+    let head = chars.iter().take(8).collect::<String>();
+    let tail = chars.iter().rev().take(6).rev().collect::<String>();
+
+    format!("{}…{}", head, tail)
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+
+    let mut out = s.chars().take(max.saturating_sub(1)).collect::<String>();
+    out.push('…');
+    out
+}
+
+fn compact_frame_label(s: &str) -> String {
+    const MAX: usize = 28;
+
+    let compact = if let Some((target, method)) = s.split_once("::") {
+        let name = method.split('(').next().unwrap_or(method);
+        format!("{}::{}", short_addr(target), name)
+    } else {
+        s.to_string()
+    };
+
+    truncate_chars(&compact, MAX)
 }
 
 fn full_or_dash(s: &str) -> &str {
@@ -572,11 +638,16 @@ fn full_or_dash(s: &str) -> &str {
 }
 
 fn short_hex(s: &str) -> String {
-    if s.len() <= 20 {
-        s.to_string()
-    } else {
-        format!("{}…{}", &s[..10], &s[s.len() - 8..])
+    let chars = s.chars().collect::<Vec<_>>();
+
+    if chars.len() <= 20 {
+        return s.to_string();
     }
+
+    let head = chars.iter().take(10).collect::<String>();
+    let tail = chars.iter().rev().take(8).rev().collect::<String>();
+
+    format!("{}…{}", head, tail)
 }
 
 fn short_slot(s: &str) -> String {
