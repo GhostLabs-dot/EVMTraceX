@@ -360,33 +360,36 @@ fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceN
         depth,
         kind,
         label: None,
-        from: str_field(value, "from"),
+        from: str_field(value, "from")?,
         to: {
-            let to = str_field(value, "to");
+            let to = str_field(value, "to")?;
             if to.is_empty() {
-                str_field(value, "address")
+                str_field(value, "address")?
             } else {
                 to
             }
         },
         input: {
-            let input = str_field(value, "input");
+            let input = str_field(value, "input")?;
             if input.is_empty() {
-                str_field(value, "data")
+                str_field(value, "data")?
             } else {
                 input
             }
         },
-        output: str_field(value, "output"),
-        value: str_field(value, "value"),
+        output: str_field(value, "output")?,
+        value: str_field(value, "value")?,
         gas,
         gas_used,
-        error: optional_string(value, "error"),
-        revert_reason: optional_string(value, "revertReason"),
+        error: optional_string(value, "error")?,
+        revert_reason: optional_string(value, "revertReason")?,
         storage_diff: parse_storage_diff(value.get("storageDiff").or_else(|| value.get("storage_diff")))?,
         calls: Vec::new(),
     };
-    if let Some(calls) = value.get("calls").and_then(Value::as_array) {
+    if let Some(calls) = value.get("calls") {
+        let calls = calls
+            .as_array()
+            .context("trace frame field 'calls' must be a JSON array")?;
         for child in calls {
             node.calls.push(parse_node(child, depth + 1, next_id)?);
         }
@@ -395,7 +398,8 @@ fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceN
 }
 
 fn attach_storage_extensions(root_value: &Value, root: &mut TraceNode) -> Result<()> {
-    if let Some(map) = root_value.get("storageDiffs").and_then(Value::as_object) {
+    if let Some(value) = root_value.get("storageDiffs") {
+        let map = value.as_object().context("storageDiffs must be a JSON object")?;
         apply_storage_map(map, root)?;
     }
 
@@ -499,16 +503,26 @@ fn parse_hex_or_dec(s: &str) -> Result<u64> {
     }
 }
 
-fn str_field(value: &Value, key: &str) -> String {
-    value.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+fn str_field(value: &Value, key: &str) -> Result<String> {
+    match value.get(key) {
+        None => Ok(String::new()),
+        Some(Value::String(value)) => Ok(value.to_owned()),
+        Some(_) => bail!("trace field '{}' must be a string", key),
+    }
 }
 
-fn optional_string(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(ToOwned::to_owned)
+fn optional_string(value: &Value, key: &str) -> Result<Option<String>> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(Value::String(value)) => {
+            if value.trim().is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value.to_owned()))
+            }
+        }
+        Some(_) => bail!("trace field '{}' must be a string", key),
+    }
 }
 
 pub fn load_selectors(path: Option<&Path>) -> Result<BTreeMap<String, String>> {

@@ -13,6 +13,30 @@ Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 
 ---
 
+## Screenshots
+
+### TRACE
+
+![EVM Execution Trace Explorer — TRACE panel](docs/screenshots/01-trace.png)
+
+### DETAILS
+
+![EVM Execution Trace Explorer — DETAILS panel](docs/screenshots/02-details.png)
+
+### STORAGE
+
+![EVM Execution Trace Explorer — STORAGE panel](docs/screenshots/03-storage.png)
+
+### FOUNDRY
+
+![EVM Execution Trace Explorer — Foundry trace](docs/screenshots/04-foundry.png)
+
+### OVERVIEW
+
+![EVM Execution Trace Explorer — overview](docs/screenshots/05-overview.png)
+
+---
+
 ## What it does
 
 `evmtrace-tui` parses supported EVM execution traces into a structured call tree and presents them through a keyboard-driven terminal interface.
@@ -722,6 +746,13 @@ EVMTraceX/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
+├── docs/
+│   └── screenshots/
+│       ├── 01-trace.png
+│       ├── 02-details.png
+│       ├── 03-storage.png
+│       ├── 04-foundry.png
+│       └── 05-overview.png
 ├── examples/
 │   └── sample_trace.json
 ├── src/
