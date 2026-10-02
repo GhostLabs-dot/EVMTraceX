@@ -164,10 +164,16 @@ fn collect_ids(node: &TraceNode, filter: &Filter, out: &mut Vec<usize>) {
     }
     if !filter.text.is_empty() {
         let q = filter.text.to_ascii_lowercase();
+        let selector_query = q.strip_prefix("0x").unwrap_or(&q);
+
         include &= node.display_name().to_ascii_lowercase().contains(&q)
             || node.to.to_ascii_lowercase().contains(&q)
             || node.from.to_ascii_lowercase().contains(&q)
-            || node.selector().unwrap_or("").to_ascii_lowercase().contains(&q);
+            || node
+                .selector()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .contains(selector_query);
     }
     if include {
         out.push(node.id);

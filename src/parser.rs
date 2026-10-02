@@ -67,9 +67,13 @@ pub fn load_trace_rpc(rpc_url: &str, tx_hash: &str) -> Result<TraceDocument> {
 pub fn parse_trace(raw: &str) -> Result<TraceNode> {
     let value: Value = serde_json::from_str(raw).context("invalid JSON trace")?;
 
-    if value.get("jsonrpc").is_some() && value.get("result").is_none() {
+    if value.get("jsonrpc").is_some() {
         if let Some(error) = value.get("error") {
             bail!("JSON-RPC response contains an error: {}", error);
+        }
+
+        if value.get("result").is_none() {
+            bail!("JSON-RPC response is missing 'result'");
         }
     }
 
@@ -80,7 +84,7 @@ pub fn parse_trace(raw: &str) -> Result<TraceNode> {
 
     let mut next_id = 0usize;
     let mut node = parse_node(root, 0, &mut next_id)?;
-    attach_storage_extensions(root, &mut node);
+    attach_storage_extensions(root, &mut node)?;
     Ok(node)
 }
 
@@ -379,7 +383,7 @@ fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceN
         gas_used,
         error: optional_string(value, "error"),
         revert_reason: optional_string(value, "revertReason"),
-        storage_diff: parse_storage_diff(value.get("storageDiff").or_else(|| value.get("storage_diff"))),
+        storage_diff: parse_storage_diff(value.get("storageDiff").or_else(|| value.get("storage_diff")))?,
         calls: Vec::new(),
     };
     if let Some(calls) = value.get("calls").and_then(Value::as_array) {
@@ -390,23 +394,28 @@ fn parse_node(value: &Value, depth: usize, next_id: &mut usize) -> Result<TraceN
     Ok(node)
 }
 
-fn attach_storage_extensions(root_value: &Value, root: &mut TraceNode) {
+fn attach_storage_extensions(root_value: &Value, root: &mut TraceNode) -> Result<()> {
     if let Some(map) = root_value.get("storageDiffs").and_then(Value::as_object) {
-        apply_storage_map(map, root);
+        apply_storage_map(map, root)?;
     }
+
+    Ok(())
 }
 
-fn apply_storage_map(map: &serde_json::Map<String, Value>, node: &mut TraceNode) {
+fn apply_storage_map(map: &serde_json::Map<String, Value>, node: &mut TraceNode) -> Result<()> {
     for (key, value) in map {
         if let Ok(id) = key.parse::<usize>() {
             if id == node.id {
-                node.storage_diff = parse_storage_diff(Some(value));
+                node.storage_diff = parse_storage_diff(Some(value))?;
             }
         }
     }
+
     for child in &mut node.calls {
-        apply_storage_map(map, child);
+        apply_storage_map(map, child)?;
     }
+
+    Ok(())
 }
 
 fn parse_kind(raw: &str) -> CallKind {
@@ -422,30 +431,51 @@ fn parse_kind(raw: &str) -> CallKind {
     }
 }
 
-fn parse_storage_diff(value: Option<&Value>) -> Vec<crate::model::StorageChange> {
+fn parse_storage_diff(value: Option<&Value>) -> Result<Vec<crate::model::StorageChange>> {
     let Some(value) = value else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let Some(obj) = value.as_object() else {
-        return Vec::new();
-    };
+
+    let obj = value.as_object().context("storageDiff must be a JSON object")?;
+
     obj.iter()
-        .filter_map(|(slot, entry)| {
+        .map(|(slot, entry)| {
             if let Some(pair) = entry.as_array() {
-                let before = pair.first()?.as_str()?.to_string();
-                let after = pair.get(1)?.as_str()?.to_string();
-                return Some(crate::model::StorageChange {
+                if pair.len() != 2 {
+                    bail!("storageDiff entry for {} must contain exactly two values", slot);
+                }
+
+                let before = pair
+                    .first()
+                    .and_then(Value::as_str)
+                    .with_context(|| format!("storageDiff entry for {} has invalid before value", slot))?;
+
+                let after = pair
+                    .get(1)
+                    .and_then(Value::as_str)
+                    .with_context(|| format!("storageDiff entry for {} has invalid after value", slot))?;
+
+                return Ok(crate::model::StorageChange {
                     slot: slot.clone(),
-                    before,
-                    after,
+                    before: before.to_owned(),
+                    after: after.to_owned(),
                 });
             }
-            let before = entry.get("before")?.as_str()?.to_string();
-            let after = entry.get("after")?.as_str()?.to_string();
-            Some(crate::model::StorageChange {
+
+            let before = entry
+                .get("before")
+                .and_then(Value::as_str)
+                .with_context(|| format!("storageDiff entry for {} is missing string before value", slot))?;
+
+            let after = entry
+                .get("after")
+                .and_then(Value::as_str)
+                .with_context(|| format!("storageDiff entry for {} is missing string after value", slot))?;
+
+            Ok(crate::model::StorageChange {
                 slot: slot.clone(),
-                before,
-                after,
+                before: before.to_owned(),
+                after: after.to_owned(),
             })
         })
         .collect()
@@ -453,9 +483,10 @@ fn parse_storage_diff(value: Option<&Value>) -> Vec<crate::model::StorageChange>
 
 fn parse_u64(value: Option<&Value>) -> Result<u64> {
     match value {
+        None => Ok(0),
         Some(Value::Number(n)) => n.as_u64().context("numeric value does not fit into u64"),
         Some(Value::String(s)) => parse_hex_or_dec(s),
-        _ => Ok(0),
+        Some(_) => bail!("numeric trace field must be a JSON number or string"),
     }
 }
 
@@ -473,7 +504,11 @@ fn str_field(value: &Value, key: &str) -> String {
 }
 
 fn optional_string(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(ToOwned::to_owned)
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
 }
 
 pub fn load_selectors(path: Option<&Path>) -> Result<BTreeMap<String, String>> {

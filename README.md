@@ -1,10 +1,15 @@
-# EVM Trace TUI
+# EVM Execution Trace Explorer
 
-**Terminal-first EVM transaction trace explorer for developers, auditors, and security researchers.**
+**A terminal-first EVM transaction trace explorer by Ghost Labs.**
+
+Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 
 `evmtrace-tui` turns EVM transaction traces into an interactive terminal UI for exploring nested calls, reverts, gas usage, function selectors, and storage changes.
 
-It is designed for fast, local investigation of EVM execution from trace files, Foundry test output, or an explicitly supplied JSON-RPC endpoint.
+**Project:** [EVMTraceX](https://github.com/GhostLabs-dot/EVMTraceX)  
+**GitHub:** [GhostLabs-dot](https://github.com/GhostLabs-dot)  
+**LinkedIn:** [Genadi Avetisov](https://www.linkedin.com/in/genadi-avetisov/)  
+**Company:** [Ghost Labs]
 
 ---
 
@@ -704,7 +709,7 @@ Provides:
 * terminal lifecycle;
 * event handling;
 * keyboard controls;
-* integration tests.
+* automated tests.
 
 ---
 
@@ -938,11 +943,17 @@ See `CONTRIBUTING.md` for the project contribution guidelines.
 
 ## Author and project
 
-**Created and maintained by Ghost Labs.**
+**EVM Execution Trace Explorer is created and maintained by Ghost Labs.**
 
-**Founded by Genadi Avetisov.**
+**Author:** Genadi Avetisov  
+**Founder:** Ghost Labs
 
 The project is developed as part of Ghost Labs' broader work in EVM tooling, runtime analysis, and security research.
+
+- [Project repository](https://github.com/GhostLabs-dot/EVMTraceX)
+- [GitHub](https://github.com/GhostLabs-dot)
+- [LinkedIn](https://www.linkedin.com/in/genadi-avetisov/)
+- [Ghost Labs]
 
 ---
 

@@ -348,10 +348,9 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("input       ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                if node.input.is_empty() {
-                    "unavailable".into()
-                } else {
-                    format!("{} bytes", node.input_bytes_len())
+                match node.input_bytes_len() {
+                    Some(bytes) => format!("{} bytes", bytes),
+                    None => "unavailable".into(),
                 },
                 Style::default().fg(Color::White),
             ),

@@ -97,14 +97,22 @@ impl TraceNode {
         Some(&s[..8])
     }
 
-    pub fn input_bytes_len(&self) -> usize {
-        let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
-
-        if !s.len().is_multiple_of(2) || !s.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return 0;
+    pub fn input_bytes_len(&self) -> Option<usize> {
+        if self.input.is_empty() {
+            return None;
         }
 
-        s.len() / 2
+        let s = self.input.strip_prefix("0x").unwrap_or(&self.input);
+
+        if s.is_empty() {
+            return Some(0);
+        }
+
+        if !s.len().is_multiple_of(2) || !s.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+
+        Some(s.len() / 2)
     }
 
     pub fn display_name(&self) -> &str {

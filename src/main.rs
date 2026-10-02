@@ -463,6 +463,34 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.00ms
         let root = parse_trace(raw).unwrap();
 
         assert_eq!(root.selector(), None);
+        assert_eq!(root.input_bytes_len(), None);
+
+        let raw = r#"{
+  "type": "CALL",
+  "from": "0x1111111111111111111111111111111111111111",
+  "to": "0x2222222222222222222222222222222222222222",
+  "input": "0x"
+}"#;
+
+        let root = parse_trace(raw).unwrap();
+
+        assert_eq!(root.selector(), None);
+        assert_eq!(root.input_bytes_len(), Some(0));
+    }
+
+    #[test]
+    fn empty_error_fields_do_not_mark_frame_reverted() {
+        let raw = r#"{
+  "type": "CALL",
+  "from": "0x1111111111111111111111111111111111111111",
+  "to": "0x2222222222222222222222222222222222222222",
+  "error": "",
+  "revertReason": "   "
+}"#;
+
+        let root = parse_trace(raw).unwrap();
+
+        assert_eq!(root.status(), "SUCCESS");
     }
 
     #[test]

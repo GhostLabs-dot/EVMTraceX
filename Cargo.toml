@@ -2,10 +2,12 @@
 name = "evmtrace-tui"
 version = "0.1.0"
 edition = "2021"
-description = "Terminal-first EVM transaction trace explorer for calls, reverts, gas and storage diffs."
+description = "EVM execution trace explorer for developers, auditors, and security researchers."
+authors = ["Genadi Avetisov"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/GhostLabs-dot/fuzzer-engine"
+homepage = "https://ghostlabs.no"
+repository = "https://github.com/GhostLabs-dot/EVMTraceX"
 keywords = ["ethereum", "evm", "trace", "debugging", "tui"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 exclude = ["incident*-foundry.txt", "foundry-trace.txt"]
