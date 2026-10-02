@@ -21,7 +21,7 @@ use std::{io, path::PathBuf, time::Duration};
 #[command(
     name = "evmtrace-tui",
     version,
-    about = "EVM Trace TUI — terminal-first EVM transaction trace explorer"
+    about = "EVM Execution Trace Explorer — terminal-first EVM transaction trace explorer"
 )]
 struct Args {
     /// Path to a Geth callTracer-style JSON trace.

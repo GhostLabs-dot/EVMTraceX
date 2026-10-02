@@ -718,7 +718,7 @@ Provides:
 The project itself contains:
 
 ```text
-evm-trace-tui/
+EVMTraceX/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml

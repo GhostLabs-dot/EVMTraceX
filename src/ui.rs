@@ -79,7 +79,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_default();
 
     let title = format!(
-        " EVM Trace TUI  │  {} frames  │  {} reverts  │  {} storage writes  │  {} roots  │  gas {}{}",
+        "EVM Execution Trace Explorer  │  {} frames  │  {} reverts  │  {} storage writes  │  {} roots  │  gas {}{}",
         s.frames,
         s.reverts,
         s.storage_writes,
