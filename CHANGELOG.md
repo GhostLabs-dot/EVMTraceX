@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - EVMTraceX branding and distribution
+
+- Rename the executable to `evmtracex` to match the project name.
+- Add tagged, cross-platform release builds for Linux x86-64, Windows x86-64, macOS Intel, and Apple Silicon.
+- Improve community contribution templates and project documentation.
+
 ## 0.1.0 - Initial public release
 
 - Interactive ratatui execution-tree viewer.
