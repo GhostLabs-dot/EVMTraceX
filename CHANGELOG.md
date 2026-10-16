@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - Release tag correction
+
+- Prepare a clean release version for the renamed `evmtracex` executable and cross-platform binary distribution.
+- Use `v0.2.1` because the existing `v0.2.0` tag points to the pre-rename source.
+
 ## 0.2.0 - EVMTraceX branding and distribution
 
 - Rename the executable to `evmtracex` to match the project name.
