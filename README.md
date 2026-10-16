@@ -1035,7 +1035,7 @@ See [`LICENSE`](LICENSE) for the full license text.
 
 ## Project status
 
-The current package version is `0.1.0`.
+The current package version is `0.2.0`.
 
 The project is intentionally kept focused: parse execution traces, preserve their structure, and make them easy to investigate from a terminal.
 
