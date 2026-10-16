@@ -8,10 +8,13 @@ Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 
 `evmtracex` turns EVM transaction traces into an interactive terminal UI for exploring nested calls, reverts, gas usage, function selectors, and storage changes.
 
-**Project:** [EVMTraceX](https://github.com/GhostLabs-dot/EVMTraceX)  
-**GitHub:** [GhostLabs-dot](https://github.com/GhostLabs-dot)  
-**LinkedIn:** [Genadi Avetisov](https://www.linkedin.com/in/genadi-avetisov/)  
-**Company:** Ghost Labs
+### Project and company links
+
+- **Project:** [EVMTraceX repository](https://github.com/GhostLabs-dot/EVMTraceX) · [Releases](https://github.com/GhostLabs-dot/EVMTraceX/releases)
+- **Ghost Labs:** [Company website](https://ghost-labs.store/) · [GitHub profile](https://github.com/GhostLabs-dot) · [Company LinkedIn](https://www.linkedin.com/company/ghostlabs-inc)
+- **Founder:** [Genadi Avetisov on LinkedIn](https://www.linkedin.com/in/genadi-avetisov/)
+- **Socials:** [X](https://x.com/GhostLabsOS) · [Reddit](https://reddit.com/user/Ghost--Labs/)
+- **Telegram:** [Announcements channel](https://t.me/GhostLabsHQ) · [Community group](https://t.me/GhostLabsCommunity)
 
 ---
 
