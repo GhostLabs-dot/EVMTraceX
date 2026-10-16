@@ -1,5 +1,5 @@
 [package]
-name = "evmtrace-tui"
+name = "evmtracex"
 version = "0.1.0"
 edition = "2021"
 description = "EVM execution trace explorer for developers, auditors, and security researchers."
