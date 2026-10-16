@@ -538,6 +538,7 @@ Open [GitHub Releases](https://github.com/GhostLabs-dot/EVMTraceX/releases) and 
 | Platform | Release asset |
 | --- | --- |
 | Linux x86-64 | `evmtracex-linux-x86_64.tar.gz` |
+| Linux ARM64 | `evmtracex-linux-aarch64.tar.gz` |
 | Windows x86-64 | `evmtracex-windows-x86_64.zip` |
 | macOS Intel | `evmtracex-macos-x86_64.tar.gz` |
 | macOS Apple Silicon (M-series) | `evmtracex-macos-aarch64.tar.gz` |
