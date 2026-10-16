@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible problem in EVMTraceX.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include private keys, credentials, API tokens, or confidential trace data. For security vulnerabilities, use private vulnerability reporting instead of a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: EVMTraceX version
+      description: Release version or commit SHA.
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem and include the error message, if any.
+      placeholder: A clear description of the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Load ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add a minimal redacted trace or screenshot where helpful.
+    validations:
+      required: false

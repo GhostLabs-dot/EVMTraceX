@@ -1,10 +1,12 @@
-# EVM Execution Trace Explorer
+# EVMTraceX — EVM Execution Trace Explorer
+
+[![CI](https://github.com/GhostLabs-dot/EVMTraceX/actions/workflows/ci.yml/badge.svg)](https://github.com/GhostLabs-dot/EVMTraceX/actions/workflows/ci.yml)
 
 **A terminal-first EVM transaction trace explorer by Ghost Labs.**
 
 Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 
-`evmtrace-tui` turns EVM transaction traces into an interactive terminal UI for exploring nested calls, reverts, gas usage, function selectors, and storage changes.
+`evmtracex` turns EVM transaction traces into an interactive terminal UI for exploring nested calls, reverts, gas usage, function selectors, and storage changes.
 
 **Project:** [EVMTraceX](https://github.com/GhostLabs-dot/EVMTraceX)  
 **GitHub:** [GhostLabs-dot](https://github.com/GhostLabs-dot)  
@@ -39,7 +41,7 @@ Created and maintained by **Genadi Avetisov**, Founder of Ghost Labs.
 
 ## What it does
 
-`evmtrace-tui` parses supported EVM execution traces into a structured call tree and presents them through a keyboard-driven terminal interface.
+`evmtracex` parses supported EVM execution traces into a structured call tree and presents them through a keyboard-driven terminal interface.
 
 You can:
 
@@ -116,7 +118,7 @@ forge test -vvvvv > foundry-trace.txt
 Then open the trace:
 
 ```bash
-./target/release/evmtrace-tui --foundry foundry-trace.txt
+./target/release/evmtracex --foundry foundry-trace.txt
 ```
 
 The parser understands Foundry trace sections beginning with:
@@ -240,7 +242,7 @@ Opcode-level `structLogs` traces are not currently supported.
 A completed transaction can be traced directly through a supplied JSON-RPC endpoint:
 
 ```bash
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   --tx 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --rpc https://your-rpc-endpoint
 ```
@@ -311,7 +313,7 @@ transferOwnership(address)
 For project-specific contracts, an ABI can be supplied:
 
 ```bash
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   examples/sample_trace.json \
   --abi path/to/Contract.json
 ```
@@ -440,7 +442,7 @@ The interface is intentionally compact and terminal-first.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐
-│ evmtrace-tui │ 8 frames │ 1 reverts │ 1 storage writes │ 1 roots     │
+│ evmtracex │ 8 frames │ 1 reverts │ 1 storage writes │ 1 roots     │
 ├───────────────────────────────────────────────────────────────────────┤
 │ TRACE                 STORAGE                 DETAILS                 │
 ├───────────────────────────────────────────────────────────────────────┤
@@ -529,16 +531,48 @@ Filtering operates on the normalized trace model rather than the original input 
 
 ## Quick start
 
-Clone or enter the project directory and build it:
+### Download a prebuilt binary
+
+Open [GitHub Releases](https://github.com/GhostLabs-dot/EVMTraceX/releases) and download the archive matching your platform:
+
+| Platform | Release asset |
+| --- | --- |
+| Linux x86-64 | `evmtracex-linux-x86_64.tar.gz` |
+| Linux ARM64 | `evmtracex-linux-aarch64.tar.gz` |
+| Windows x86-64 | `evmtracex-windows-x86_64.zip` |
+| macOS Intel | `evmtracex-macos-x86_64.tar.gz` |
+| macOS Apple Silicon (M-series) | `evmtracex-macos-aarch64.tar.gz` |
+
+Extract the archive, then run the binary from a terminal. For example, on Linux or macOS:
 
 ```bash
-cargo build --release
+./evmtracex examples/sample_trace.json
 ```
+
+On Windows PowerShell:
+
+```powershell
+.\evmtracex.exe examples\sample_trace.json
+```
+
+Prebuilt archives are attached to tagged releases. If no release is published yet, use the source-build steps below.
+
+### Build from source
+
+Install the [stable Rust toolchain](https://rustup.rs/), clone this repository, then run:
+
+```bash
+git clone https://github.com/GhostLabs-dot/EVMTraceX.git
+cd EVMTraceX
+cargo build --release --locked
+```
+
+The binary is created at `target/release/evmtracex` on Linux/macOS and `target/release/evmtracex.exe` on Windows.
 
 Run the included example:
 
 ```bash
-./target/release/evmtrace-tui examples/sample_trace.json
+./target/release/evmtracex examples/sample_trace.json
 ```
 
 Or directly through Cargo:
@@ -550,7 +584,7 @@ cargo run -- examples/sample_trace.json
 With an ABI:
 
 ```bash
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   examples/sample_trace.json \
   --abi path/to/Contract.json
 ```
@@ -560,14 +594,14 @@ With a Foundry trace:
 ```bash
 forge test -vvvv > foundry-trace.txt
 
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   --foundry foundry-trace.txt
 ```
 
 With a Foundry trace and ABI:
 
 ```bash
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   --foundry foundry-trace.txt \
   --abi path/to/Contract.json
 ```
@@ -575,7 +609,7 @@ With a Foundry trace and ABI:
 With a remote transaction:
 
 ```bash
-./target/release/evmtrace-tui \
+./target/release/evmtracex \
   --tx 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --rpc https://your-rpc-endpoint
 ```
@@ -842,7 +876,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ### Release build
 
 ```bash
-cargo build --release
+cargo build --release --locked
 ```
 
 ### Full verification
@@ -883,7 +917,7 @@ The CI configuration is scoped to the TUI project and its workflow changes.
 
 ## Design goals
 
-`evmtrace-tui` is intentionally focused on one job:
+`evmtracex` is intentionally focused on one job:
 
 > **Make EVM execution traces fast to inspect from a terminal.**
 
@@ -904,7 +938,7 @@ It intentionally avoids turning the project into a full EVM framework.
 
 ## What it is not
 
-`evmtrace-tui` is a trace explorer, not a vulnerability scanner.
+`evmtracex` is a trace explorer, not a vulnerability scanner.
 
 It does not currently provide:
 
@@ -974,17 +1008,19 @@ See `CONTRIBUTING.md` for the project contribution guidelines.
 
 ## Author and project
 
-**EVM Execution Trace Explorer is created and maintained by Ghost Labs.**
+**EVMTraceX is created and maintained by Ghost Labs.**
 
 **Author:** Genadi Avetisov  
 **Founder:** Ghost Labs
 
-The project is developed as part of Ghost Labs' broader work in EVM tooling, runtime analysis, and security research.
+The project is part of Ghost Labs' work in EVM tooling, runtime analysis, developer infrastructure, and security research.
 
-- [Project repository](https://github.com/GhostLabs-dot/EVMTraceX)
-- [GitHub](https://github.com/GhostLabs-dot)
-- [LinkedIn](https://www.linkedin.com/in/genadi-avetisov/)
-- Ghost Labs
+### Project and community links
+
+- **EVMTraceX:** [Repository](https://github.com/GhostLabs-dot/EVMTraceX) · [Releases](https://github.com/GhostLabs-dot/EVMTraceX/releases) · [Issues](https://github.com/GhostLabs-dot/EVMTraceX/issues)
+- **Ghost Labs:** [Website](https://ghost-labs.store/) · [GitHub](https://github.com/GhostLabs-dot) · [LinkedIn](https://www.linkedin.com/company/ghostlabs-inc)
+- **Founder:** [Genadi Avetisov on LinkedIn](https://www.linkedin.com/in/genadi-avetisov/)
+- **Updates and community:** [X](https://x.com/GhostLabsOS) · [Reddit](https://reddit.com/user/Ghost--Labs/) · [Telegram announcements](https://t.me/GhostLabsHQ) · [Telegram community](https://t.me/GhostLabsCommunity)
 
 ---
 
@@ -1000,7 +1036,7 @@ See [`LICENSE`](LICENSE) for the full license text.
 
 ## Project status
 
-The current package version is `0.1.0`.
+The current package version is `0.2.0`.
 
 The project is intentionally kept focused: parse execution traces, preserve their structure, and make them easy to investigate from a terminal.
 

@@ -19,7 +19,7 @@ use std::{io, path::PathBuf, time::Duration};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "evmtrace-tui",
+    name = "evmtracex",
     version,
     about = "EVM Execution Trace Explorer — terminal-first EVM transaction trace explorer"
 )]
