@@ -19,6 +19,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             asset: linux-x86_64
             archive: evmtracex-linux-x86_64.tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: linux-aarch64
+            archive: evmtracex-linux-aarch64.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset: windows-x86_64
